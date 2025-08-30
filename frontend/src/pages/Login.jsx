@@ -3,6 +3,7 @@ import { Leaf } from "lucide-react"; // icon
 import { Link, useNavigate } from "react-router-dom";
 
 function LoginPage() {
+  const serverurl=import.meta.env.VITE_SERVER_URL
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -15,7 +16,7 @@ function LoginPage() {
     try {
       setLoading(true);
 
-      const res = await fetch("http://localhost:5000/api/auth/login", {
+      const res = await fetch(`${serverurl}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -85,12 +86,12 @@ function LoginPage() {
               className="block text-green-800 font-semibold mb-2"
               htmlFor="email"
             >
-              Email
+              Email or Username
             </label>
             <input
               type="email"
               id="email"
-              placeholder="Enter your email"
+              placeholder="Enter your Email/Username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 border border-green-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 bg-green-50/70"
