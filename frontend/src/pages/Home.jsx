@@ -1,65 +1,10 @@
-import React from "react";
 
-// ✅ Simple Navigation
-const Navigation = () => (
-  <nav className="fixed top-0 left-0 w-full bg-white text-black shadow-md z-50 ">
-    <div className="container mx-auto flex justify-between items-center px-6 py-4">
-      <h1 className="text-xl text-green-700 font-bold">MangroveWatch</h1>
-      <div className="flex gap-4">
-        <a href="/" className="hover:underline">Home</a>
-        <a href="/report" className="hover:underline">Report</a>
-        <a href="/leaderboard" className="hover:underline">Leaderboard</a>
-        <a href="/profile" className="hover:underline">Profile</a>
-      </div>
-    </div>
-  </nav>
-);
+import Navbar from "../Components/Navbar";
+import { Card, CardHeader, CardContent, CardTitle } from "../Components/Card";
+import { Badge } from "../Components/Badge";
 
-// ✅ Generic Button
-const Button = ({ children, variant = "default", size = "md", asChild = false }) => {
-  const base =
-    "rounded-2xl font-semibold shadow px-6 py-3 transition-all duration-300";
-  const variants = {
-    default: "bg-green-700 text-white hover:bg-green-800",
-    secondary: "bg-white text-green-700 border border-green-700 hover:bg-green-50",
-    mint: "bg-emerald-500 text-white hover:bg-emerald-600",
-    hero: "bg-gradient-to-r from-green-600 to-emerald-500 text-white hover:opacity-90",
-  };
-  const sizes = {
-    md: "text-base",
-    xl: "text-lg px-8 py-4",
-  };
-  return (
-    <button className={`${base} ${variants[variant]} ${sizes[size]}`}>
-      {children}
-    </button>
-  );
-};
+import Button from "../Components/Button";
 
-// ✅ Card
-const Card = ({ children, className = "" }) => (
-  <div className={`bg-white rounded-2xl p-4 ${className}`}>{children}</div>
-);
-const CardHeader = ({ children }) => <div className="mb-2">{children}</div>;
-const CardContent = ({ children, className = "" }) => (
-  <div className={className}>{children}</div>
-);
-const CardTitle = ({ children, className = "" }) => (
-  <h3 className={`text-lg font-semibold ${className}`}>{children}</h3>
-);
-
-// ✅ Badge
-const Badge = ({ children, variant = "default" }) => {
-  const variants = {
-    default: "bg-green-600 text-white",
-    secondary: "bg-gray-200 text-gray-800",
-  };
-  return (
-    <span className={`px-3 py-1 text-xs font-medium rounded-lg ${variants[variant]}`}>
-      {children}
-    </span>
-  );
-};
 
 // ✅ Icons (minimal emoji fallback)
 const FileText = () => <span>📄</span>;
