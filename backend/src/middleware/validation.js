@@ -177,12 +177,7 @@ const validate = (schema) => {
   };
 };
 
-export {
-  validateRegistration,
-  validateLogin,
-  validateReport,
-  validate,
-};
+export { validateRegistration, validateLogin, validateReport, validate };
 
 export const schemas = {
   registrationSchema,

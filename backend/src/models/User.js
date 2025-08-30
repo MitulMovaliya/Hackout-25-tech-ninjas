@@ -118,13 +118,6 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
-    verificationToken: String,
-    passwordResetToken: String,
-    passwordResetExpires: Date,
     lastLogin: Date,
     loginAttempts: {
       type: Number,

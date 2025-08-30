@@ -3,7 +3,15 @@ import cors from "cors";
 import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 
+// Import routes
 import authRoutes from "./routes/auth.js";
+import reportRoutes from "./routes/reports.js";
+import userRoutes from "./routes/users.js";
+import dashboardRoutes from "./routes/dashboard.js";
+import leaderboardRoutes from "./routes/leaderboard.js";
+
+// Import middleware
+import errorHandler from "./middleware/errorHandler.js";
 
 // Load environment variables
 dotenv.config();
@@ -18,7 +26,12 @@ app.use(express.urlencoded({ extended: true }));
 
 connectDB();
 
+// API Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/reports", reportRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/leaderboard", leaderboardRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
@@ -39,6 +52,23 @@ app.get("/health", (req, res) => {
 });
 
 // API routes
+app.get("/api", (req, res) => {
+  res.json({
+    message: "Mangrove Monitoring API",
+    version: "1.0.0",
+    environment: process.env.NODE_ENV || "development",
+    endpoints: {
+      auth: "/api/auth - Authentication endpoints",
+      reports: "/api/reports - Report management",
+      users: "/api/users - User management",
+      dashboard: "/api/dashboard - Dashboard data",
+      leaderboard: "/api/leaderboard - User rankings",
+      health: "/health - Health check",
+    },
+    documentation: "https://github.com/MitulMovaliya/Hackout-25-tech-ninjas",
+  });
+});
+
 app.get("/api/test", (req, res) => {
   res.json({
     message: "API is working",
@@ -50,13 +80,7 @@ app.get("/api/test", (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({
-    error: "Something went wrong!",
-    message: err.message,
-  });
-});
+app.use(errorHandler);
 
 // 404 handler
 app.use("*", (req, res) => {

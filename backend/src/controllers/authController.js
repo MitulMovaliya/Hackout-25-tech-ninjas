@@ -1,6 +1,5 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
-import crypto from "crypto";
 import User from "../models/User.js";
 // import logger from "../utils/logger.js";
 // import { sendEmail } from "../services/emailService.js";
@@ -34,9 +33,6 @@ const register = async (req, res) => {
       });
     }
 
-    // Generate verification token
-    const verificationToken = crypto.randomBytes(32).toString("hex");
-
     // Create new user
     const user = new User({
       username,
@@ -45,34 +41,9 @@ const register = async (req, res) => {
       fullName,
       phone,
       location,
-      verificationToken,
     });
 
     await user.save();
-
-    // Send verification email
-    try {
-      // await sendEmail({
-      //   to: email,
-      //   subject: "Verify Your Email - Mangrove Monitoring System",
-      //   html: `
-      //     <h2>Welcome to Mangrove Monitoring System!</h2>
-      //     <p>Hello ${fullName},</p>
-      //     <p>Thank you for joining our community to protect mangrove forests.</p>
-      //     <p>Please verify your email address by clicking the link below:</p>
-      //     <a href="${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}" 
-      //        style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-      //       Verify Email
-      //     </a>
-      //     <p>If you didn't create this account, please ignore this email.</p>
-      //     <p>Best regards,<br>Mangrove Monitoring Team</p>
-      //   `,
-      // });
-    } catch (emailError) {
-      // console.error("Failed to send verification email:", emailError);
-      console.error("Failed to send verification email:", emailError);
-      // Don't fail registration if email fails
-    }
 
     // Generate token
     const token = generateToken(user._id);
@@ -81,8 +52,7 @@ const register = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message:
-        "User registered successfully. Please check your email for verification.",
+      message: "User registered successfully.",
       data: {
         token,
         user: {
@@ -91,7 +61,6 @@ const register = async (req, res) => {
           email: user.email,
           fullName: user.fullName,
           role: user.role,
-          isVerified: user.isVerified,
           gamification: user.gamification,
         },
       },
@@ -182,7 +151,6 @@ const login = async (req, res) => {
           email: user.email,
           fullName: user.fullName,
           role: user.role,
-          isVerified: user.isVerified,
           gamification: user.gamification,
           lastLogin: user.lastLogin,
         },
@@ -282,199 +250,6 @@ const updateProfile = async (req, res) => {
   }
 };
 
-// @desc    Send password reset email
-// @route   POST /api/auth/forgot-password
-// @access  Public
-const forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "No user found with this email address",
-      });
-    }
-
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    user.passwordResetToken = resetToken;
-    user.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-
-    await user.save();
-
-    // Send reset email
-    await sendEmail({
-      to: email,
-      subject: "Password Reset - Mangrove Monitoring System",
-      html: `
-        <h2>Password Reset Request</h2>
-        <p>Hello ${user.fullName},</p>
-        <p>You requested a password reset for your account.</p>
-        <p>Click the link below to reset your password (valid for 10 minutes):</p>
-        <a href="${process.env.FRONTEND_URL}/reset-password?token=${resetToken}" 
-           style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-          Reset Password
-        </a>
-        <p>If you didn't request this, please ignore this email.</p>
-        <p>Best regards,<br>Mangrove Monitoring Team</p>
-      `,
-    });
-
-    console.log(`Password reset requested: ${email}`);
-
-    res.json({
-      success: true,
-      message: "Password reset email sent",
-    });
-  } catch (error) {
-    console.error("Forgot password error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error sending reset email",
-    });
-  }
-};
-
-// @desc    Reset password with token
-// @route   POST /api/auth/reset-password
-// @access  Public
-const resetPassword = async (req, res) => {
-  try {
-    const { token, password } = req.body;
-
-    const user = await User.findOne({
-      passwordResetToken: token,
-      passwordResetExpires: { $gt: Date.now() },
-    });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired reset token",
-      });
-    }
-
-    // Update password
-    user.password = password;
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    user.loginAttempts = 0;
-    user.lockUntil = undefined;
-
-    await user.save();
-
-    console.log(`Password reset completed: ${user.email}`);
-
-    res.json({
-      success: true,
-      message: "Password reset successful",
-    });
-  } catch (error) {
-    console.error("Reset password error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error resetting password",
-    });
-  }
-};
-
-// @desc    Verify email address
-// @route   POST /api/auth/verify-email
-// @access  Public
-const verifyEmail = async (req, res) => {
-  try {
-    const { token } = req.body;
-
-    const user = await User.findOne({ verificationToken: token });
-
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid verification token",
-      });
-    }
-
-    user.isVerified = true;
-    user.verificationToken = undefined;
-
-    await user.save();
-
-    console.log(`Email verified: ${user.email}`);
-
-    res.json({
-      success: true,
-      message: "Email verified successfully",
-    });
-  } catch (error) {
-    console.error("Verify email error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error verifying email",
-    });
-  }
-};
-
-// @desc    Resend verification email
-// @route   POST /api/auth/resend-verification
-// @access  Public
-const resendVerification = async (req, res) => {
-  try {
-    const { email } = req.body;
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "No user found with this email address",
-      });
-    }
-
-    if (user.isVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Email is already verified",
-      });
-    }
-
-    // Generate new verification token
-    const verificationToken = crypto.randomBytes(32).toString("hex");
-    user.verificationToken = verificationToken;
-
-    await user.save();
-
-    // Send verification email
-    await sendEmail({
-      to: email,
-      subject: "Verify Your Email - Mangrove Monitoring System",
-      html: `
-        <h2>Email Verification</h2>
-        <p>Hello ${user.fullName},</p>
-        <p>Please verify your email address by clicking the link below:</p>
-        <a href="${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}" 
-           style="background-color: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
-          Verify Email
-        </a>
-        <p>Best regards,<br>Mangrove Monitoring Team</p>
-      `,
-    });
-
-    res.json({
-      success: true,
-      message: "Verification email sent",
-    });
-  } catch (error) {
-    console.error("Resend verification error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error sending verification email",
-    });
-  }
-};
-
 // @desc    Change password
 // @route   PUT /api/auth/change-password
 // @access  Private
@@ -519,9 +294,5 @@ export default {
   logout,
   getCurrentUser,
   updateProfile,
-  forgotPassword,
-  resetPassword,
-  verifyEmail,
-  resendVerification,
   changePassword,
 };

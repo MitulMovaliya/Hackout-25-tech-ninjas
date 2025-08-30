@@ -45,7 +45,6 @@ const reportSchema = new mongoose.Schema(
       coordinates: {
         type: [Number], // [longitude, latitude]
         required: true,
-        index: "2dsphere",
       },
       address: String,
       landmark: String,
