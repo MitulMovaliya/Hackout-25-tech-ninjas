@@ -390,7 +390,8 @@ class SatelliteService {
       // Convert back from scaled UINT16 to float NDVI in [-1,1]
       const ndviValues = validPixels.map((v) => v / 10000.0 - 1.0);
 
-      const averageNDVI = ndviValues.reduce((sum, val) => sum + val, 0) / ndviValues.length;
+      const averageNDVI =
+        ndviValues.reduce((sum, val) => sum + val, 0) / ndviValues.length;
       const cloudCover =
         (pixelValues.length - validPixels.length) / pixelValues.length;
       const confidence = Math.max(0.1, 1 - cloudCover); // Lower confidence with more clouds
@@ -487,15 +488,17 @@ class SatelliteService {
       // If NASA returns 400 with "No data available" try widening the temporal window and retry once
       if (!response.ok) {
         const errorText = await response.text();
-        console.warn(
-          `NASA MODIS API Error: ${response.status} - ${errorText}`
-        );
+        console.warn(`NASA MODIS API Error: ${response.status} - ${errorText}`);
 
         if (response.status === 400 && /No data available/i.test(errorText)) {
-          console.log("No MODIS data for requested window — retrying with a wider window (+/- 90 days)");
+          console.log(
+            "No MODIS data for requested window — retrying with a wider window (+/- 90 days)"
+          );
           const widerStart = this.formatDateForNASA(date, -90);
           const widerEnd = this.formatDateForNASA(date, 90);
-          const url2 = new URL("https://modis.ornl.gov/rst/api/v1/MOD13Q1/subset");
+          const url2 = new URL(
+            "https://modis.ornl.gov/rst/api/v1/MOD13Q1/subset"
+          );
           url2.searchParams.append("latitude", latitude);
           url2.searchParams.append("longitude", longitude);
           url2.searchParams.append("startDate", widerStart);
@@ -503,7 +506,9 @@ class SatelliteService {
           url2.searchParams.append("kmAboveBelow", 1);
           url2.searchParams.append("kmLeftRight", 1);
 
-          response = await fetch(url2, { headers: { Authorization: `Bearer ${apiKey}` } });
+          response = await fetch(url2, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
         }
       }
 
