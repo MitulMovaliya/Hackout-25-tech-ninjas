@@ -1,10 +1,9 @@
-import React from "react";
-
-
-import { Link } from "react-router-dom";
+import React from 'react';
+import { Link } from 'react-router-dom';
 
 const Navbar = () => {
   return (
+
     <nav className="fixed top-0 left-0 w-full bg-white text-black shadow-md z-50">
       <div className="mx-auto flex justify-between items-center px-6 py-4">
         <h1 className="text-xl text-green-700 font-bold">
@@ -49,10 +48,9 @@ const Navbar = () => {
           </Link>
         </div>
       </div>
-    </nav>
-  );
-};
+    </div>
+  </nav>
+  )
+}
 
-
-
-export default Navbar
+export default Navbar;

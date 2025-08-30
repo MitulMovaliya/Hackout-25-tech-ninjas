@@ -4,6 +4,7 @@ import LoginPage from "./pages/Login";
 import SignupPage from "./pages/SignUp";
 import Home from "./pages/Home";
 import Leaderboard from "./pages/LeaderBoard";
+import Report from "./pages/Report";
 
 const router = createBrowserRouter([
   
@@ -23,9 +24,16 @@ const router = createBrowserRouter([
       <SignupPage/>
   },
   {
+
     path: "/leaderboard",
     element:
       <Leaderboard/>
+   },
+  {
+    path: "/report",
+    element:
+      <Report/>
+
   }
 ]);
 

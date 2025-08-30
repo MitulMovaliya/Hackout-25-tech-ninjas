@@ -1,6 +1,6 @@
 import React from 'react'
 
-function Button({ children, variant = "default", size = "md", asChild = false }) {
+function Button({ children, variant = "default", size = "md", asChild = false, onClick }) {
   const base =
     "rounded-2xl font-semibold shadow px-6 py-3 transition-all duration-300";
   const variants = {
@@ -14,7 +14,10 @@ function Button({ children, variant = "default", size = "md", asChild = false })
     xl: "text-lg px-8 py-4",
   };
   return (
-    <button className={`${base} ${variants[variant]} ${sizes[size]}`}>
+    <button
+      className={`${base} ${variants[variant]} ${sizes[size]}`}
+      onClick={onClick}
+    >
       {children}
     </button>
   );

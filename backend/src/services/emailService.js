@@ -1,5 +1,9 @@
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
 // import logger from "../utils/logger.js";
+
+// Load environment variables
+dotenv.config();
 
 class EmailService {
   constructor() {
@@ -9,7 +13,15 @@ class EmailService {
 
   setupTransporter() {
     try {
-      this.transporter = nodemailer.createTransporter({
+      // Check if credentials are available
+      if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+        console.warn(
+          "Email credentials not found. Email service will be disabled."
+        );
+        return;
+      }
+
+      this.transporter = nodemailer.createTransport({
         host: process.env.EMAIL_HOST || "smtp.gmail.com",
         port: parseInt(process.env.EMAIL_PORT) || 587,
         secure: false, // true for 465, false for other ports

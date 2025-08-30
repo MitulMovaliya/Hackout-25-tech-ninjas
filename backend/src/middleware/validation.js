@@ -32,7 +32,7 @@ const registrationSchema = Joi.object({
   }),
 
   phone: Joi.string()
-    .pattern(/^[+]?[1-9]\\d{1,14}$/)
+    .pattern(/^\+91[6-9]\d{9}$/)
     .optional()
     .messages({
       "string.pattern.base": "Please provide a valid phone number",

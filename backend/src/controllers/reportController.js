@@ -3,6 +3,7 @@ import User from "../models/User.js";
 // import logger from "../utils/logger.js";
 import aiService from "../services/aiService.js";
 import satelliteService from "../services/satelliteService.js";
+import emailService from "../services/emailService.js";
 import path from "path";
 
 // @desc    Create new report
@@ -406,6 +407,17 @@ const validateReport = async (req, res) => {
       await reporter.addPoints(50);
       reporter.statistics.reportsValidated += 1;
       await reporter.save();
+
+      // Send approval email notification
+      try {
+        await emailService.sendReportValidationEmail(reporter, report, true);
+        console.log(`Approval email sent to: ${reporter.email}`);
+      } catch (emailError) {
+        console.error(
+          `Failed to send approval email to ${reporter.email}:`,
+          emailError
+        );
+      }
     } else if (action === "reject") {
       await report.updateStatus("rejected", reviewNotes);
 
@@ -413,6 +425,17 @@ const validateReport = async (req, res) => {
       const reporter = await User.findById(report.reporter);
       reporter.statistics.reportsRejected += 1;
       await reporter.save();
+
+      // Send rejection email notification
+      try {
+        await emailService.sendReportValidationEmail(reporter, report, false);
+        console.log(`Rejection email sent to: ${reporter.email}`);
+      } catch (emailError) {
+        console.error(
+          `Failed to send rejection email to ${reporter.email}:`,
+          emailError
+        );
+      }
     }
 
     await report.save();
@@ -472,6 +495,21 @@ const takeAction = async (req, res) => {
     // Award additional points to reporter for action taken
     const reporter = await User.findById(report.reporter);
     await reporter.addPoints(25);
+
+    // Send action taken email notification
+    try {
+      await emailService.sendActionTakenEmail(
+        reporter,
+        report,
+        report.actionTaken
+      );
+      console.log(`Action taken email sent to: ${reporter.email}`);
+    } catch (emailError) {
+      console.error(
+        `Failed to send action taken email to ${reporter.email}:`,
+        emailError
+      );
+    }
 
     console.log(`Action taken on report: ${report._id} by ${req.user.email}`);
 
