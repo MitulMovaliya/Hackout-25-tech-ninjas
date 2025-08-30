@@ -8,7 +8,9 @@ const Navbar = () => {
     <nav className="fixed top-0 left-0 w-full bg-white text-black shadow-md z-50">
       <div className="mx-auto flex justify-between items-center px-6 py-4">
         <h1 className="text-xl text-green-700 font-bold">
-          <i className="fa-solid fa-tree"></i> MangroveWatch
+          <Link to="/" >
+            <i className="fa-solid fa-tree"></i> MangroveWatch
+          </Link>
         </h1>
         <div className="flex justify-center items-center gap-15">
           <Link 
