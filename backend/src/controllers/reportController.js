@@ -3,6 +3,7 @@ import User from "../models/User.js";
 // import logger from "../utils/logger.js";
 import aiService from "../services/aiService.js";
 import satelliteService from "../services/satelliteService.js";
+import pythonService from "../services/pythonService.js";
 import emailService from "../services/emailService.js";
 import path from "path";
 
@@ -832,33 +833,113 @@ const processReportWithAI = async (reportId) => {
 
     const aiAnalysis = {};
 
-    // Image classification
-    if (report.media.images.length > 0) {
-      const imageClassification = await aiService.classifyImages(
-        report.media.images.map((img) => img.path)
-      );
-      aiAnalysis.imageClassification = imageClassification;
+    // Ensure media and coordinates exist
+    report.media = report.media || { images: [] };
+    report.location = report.location || { coordinates: [0, 0] };
+
+    // Image classification (guard against empty images)
+    if (Array.isArray(report.media.images) && report.media.images.length > 0) {
+      try {
+        // Prefer calling the Python FastAPI service if available
+        const imagePaths = report.media.images.map((img) => img.path);
+        let imageClassification = null;
+
+        try {
+          if (await pythonService.checkAIServiceHealth()) {
+            const resp = await pythonService.callAIService("/classify", {
+              image_paths: imagePaths,
+            });
+            // Normalize response to existing aiAnalysis format
+            imageClassification = {
+              predictions: resp.predictions.map((p) => ({
+                class: p.class_name || p.class || p.className,
+                confidence: p.confidence,
+                model: p.model || p.modelName || "python-heuristic",
+                timestamp: p.timestamp || new Date(),
+                details: p.details || {},
+              })),
+              averageConfidence: resp.averageConfidence,
+              primaryClass: resp.primaryClass,
+              isValid: !!resp.isValid,
+              totalImages: resp.totalImages,
+              validImages: resp.validImages,
+            };
+          } else {
+            // Fallback to existing JS aiService
+            imageClassification = await aiService.classifyImages(imagePaths);
+          }
+        } catch (svcErr) {
+          console.error(
+            "Python service classify failed, falling back:",
+            svcErr
+          );
+          imageClassification = await aiService.classifyImages(imagePaths);
+        }
+
+        aiAnalysis.imageClassification = imageClassification;
+      } catch (imgErr) {
+        console.error("Image classification failed:", imgErr);
+        aiAnalysis.imageClassification = { error: String(imgErr) };
+      }
     }
 
     // Satellite validation
-    const satelliteValidation = await satelliteService.analyzeSatelliteData(
-      report.location.coordinates[0],
-      report.location.coordinates[1]
-    );
-    aiAnalysis.satelliteValidation = satelliteValidation;
+    try {
+      const satelliteValidation = await satelliteService.analyzeSatelliteData(
+        report.location.coordinates[0],
+        report.location.coordinates[1]
+      );
+      aiAnalysis.satelliteValidation = satelliteValidation;
+    } catch (satErr) {
+      console.error("Satellite analysis failed:", satErr);
+      aiAnalysis.satelliteValidation = { error: String(satErr) };
+    }
 
     // Anomaly detection
-    const anomalyDetection = await aiService.detectAnomalies(
-      report.reporter,
-      report.location.coordinates
-    );
-    aiAnalysis.anomalyDetection = anomalyDetection;
+    try {
+      // Prefer Python service for anomaly detection if available (note: current Python anomaly is lightweight)
+      let anomalyDetection = null;
+      try {
+        if (await pythonService.checkAIServiceHealth()) {
+          const resp = await pythonService.callAIService("/anomaly", {
+            reporter_id: report.reporter.toString(),
+            coordinates: report.location.coordinates,
+          });
+          anomalyDetection = resp;
+        } else {
+          anomalyDetection = await aiService.detectAnomalies(
+            report.reporter,
+            report.location.coordinates
+          );
+        }
+      } catch (anomSvcErr) {
+        console.error(
+          "Python service anomaly failed, falling back:",
+          anomSvcErr
+        );
+        anomalyDetection = await aiService.detectAnomalies(
+          report.reporter,
+          report.location.coordinates
+        );
+      }
 
-    // Add AI analysis to report
+      aiAnalysis.anomalyDetection = anomalyDetection;
+    } catch (anomErr) {
+      console.error("Anomaly detection failed:", anomErr);
+      aiAnalysis.anomalyDetection = { error: String(anomErr) };
+    }
+
+    // Add AI analysis to report and re-fetch saved report to read computed overallScore
     await report.addAIAnalysis(aiAnalysis);
+    const updatedReport = await Report.findById(reportId).lean();
 
-    // Update status based on AI confidence
-    if (aiAnalysis.overallScore > 0.7) {
+    const overallScore =
+      updatedReport?.aiAnalysis?.overallScore !== undefined
+        ? updatedReport.aiAnalysis.overallScore
+        : 0;
+
+    // Update status based on persisted AI confidence
+    if (overallScore > 0.7) {
       await report.updateStatus("ai_validated");
     } else {
       await report.updateStatus("human_review");

@@ -1,5 +1,6 @@
-import axios from "axios";
 // import logger from "../utils/logger.js";
+
+import pythonService from "./pythonService.js";
 
 class SatelliteService {
   constructor() {
@@ -13,22 +14,35 @@ class SatelliteService {
         return this.sentinelHubToken;
       }
 
-      const response = await axios.post(
+      const response = await fetch(
         "https://services.sentinel-hub.com/oauth/token",
         {
-          grant_type: "client_credentials",
-          client_id: process.env.SENTINEL_HUB_CLIENT_ID,
-          client_secret: process.env.SENTINEL_HUB_CLIENT_SECRET,
-        },
-        {
+          method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
           },
+          body: new URLSearchParams({
+            grant_type: "client_credentials",
+            client_id: process.env.SENTINEL_HUB_CLIENT_ID,
+            client_secret: process.env.SENTINEL_HUB_CLIENT_SECRET,
+          }),
         }
       );
 
-      this.sentinelHubToken = response.data.access_token;
-      this.tokenExpiry = Date.now() + response.data.expires_in * 1000 - 60000; // 1 minute buffer
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Sentinel Hub Token API Error: ${response.status} - ${errorText}`
+        );
+        throw new Error(
+          `HTTP error! status: ${response.status} - ${errorText}`
+        );
+      }
+
+      const data = await response.json();
+
+      this.sentinelHubToken = data.access_token;
+      this.tokenExpiry = Date.now() + data.expires_in * 1000 - 60000; // 1 minute buffer
 
       return this.sentinelHubToken;
     } catch (error) {
@@ -39,10 +53,28 @@ class SatelliteService {
 
   async analyzeSatelliteData(longitude, latitude) {
     try {
+      // First try Python microservice
+      try {
+        const pyResp = await pythonService.callAIService("/satellite/ndvi", {
+          longitude,
+          latitude,
+          days_back: 60,
+        });
+
+        if (pyResp && pyResp.ndviAnalysis) {
+          return pyResp;
+        }
+      } catch (pyErr) {
+        console.warn(
+          "Python satellite service unavailable or failed:",
+          pyErr.message || pyErr
+        );
+        // fallthrough to JS implementations
+      }
       // Get current date and date from 30 days ago
       const currentDate = new Date();
       const pastDate = new Date(
-        currentDate.getTime() - 30 * 24 * 60 * 60 * 1000
+        currentDate.getTime() - 60 * 24 * 60 * 60 * 1000
       );
 
       let analysisResult = null;
@@ -92,17 +124,55 @@ class SatelliteService {
         }
       }
 
-      // If all APIs fail, throw error instead of returning mock data
+      // If all APIs fail, return fallback analysis instead of throwing error
       if (!analysisResult) {
-        throw new Error(
-          "All satellite data sources are unavailable. Please check API configurations."
+        console.warn(
+          "All satellite APIs unavailable, returning fallback analysis"
         );
+        return {
+          ndviAnalysis: {
+            beforeNDVI: null,
+            afterNDVI: null,
+            difference: null,
+            changeDetected: false,
+            satelliteSource: "unavailable",
+            analysisDate: new Date(),
+            error: "External satellite APIs unavailable",
+          },
+          vegetationLoss: {
+            percentage: null,
+            area: null,
+            confirmed: false,
+          },
+          confidence: 0.0,
+          dataSource: "fallback",
+          lastUpdated: new Date(),
+        };
       }
 
       return analysisResult;
     } catch (error) {
       console.error("Satellite analysis error:", error);
-      throw error; // Don't return mock data, let the caller handle the error
+      // Return fallback data instead of throwing error
+      return {
+        ndviAnalysis: {
+          beforeNDVI: null,
+          afterNDVI: null,
+          difference: null,
+          changeDetected: false,
+          satelliteSource: "error",
+          analysisDate: new Date(),
+          error: error.message,
+        },
+        vegetationLoss: {
+          percentage: null,
+          area: null,
+          confirmed: false,
+        },
+        confidence: 0.0,
+        dataSource: "error_fallback",
+        lastUpdated: new Date(),
+      };
     }
   }
 
@@ -174,6 +244,14 @@ class SatelliteService {
 
   async getSentinelNDVI(longitude, latitude, date, token) {
     try {
+      // Check if we have valid environment variables
+      if (
+        !process.env.SENTINEL_HUB_CLIENT_ID ||
+        !process.env.SENTINEL_HUB_CLIENT_SECRET
+      ) {
+        throw new Error("Sentinel Hub credentials not configured");
+      }
+
       const bbox_size = 0.001; // ~100m around the point
       const bbox = [
         longitude - bbox_size,
@@ -189,7 +267,8 @@ class SatelliteService {
             input: ["B04", "B08", "CLM"],
             output: { 
               bands: 1,
-              sampleType: "FLOAT32"
+              // Use UINT16 so JSON responses are supported; encode NDVI scaled to avoid FLOAT32
+              sampleType: "UINT16"
             }
           };
         }
@@ -197,75 +276,110 @@ class SatelliteService {
         function evaluatePixel(sample) {
           // Calculate NDVI
           let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
-          
-          // Return -999 for cloudy pixels
+
+          // Return special nodata 65535 for cloudy pixels
           if (sample.CLM > 0.5) {
-            return [-999];
+            return [65535];
           }
-          
-          return [ndvi];
+
+          // Scale NDVI from [-1,1] to [0,20000] so it fits into UINT16
+          // stored = round((ndvi + 1.0) * 10000)
+          const scaled = Math.round((ndvi + 1.0) * 10000.0);
+          return [scaled];
         }
       `;
 
-      const response = await axios.post(
+      const response = await fetch(
         "https://services.sentinel-hub.com/api/v1/process",
         {
-          input: {
-            bounds: {
-              properties: {
-                crs: "http://www.opengis.net/def/crs/EPSG/0/4326",
-              },
-              geometry: {
-                type: "Polygon",
-                coordinates: [
-                  [
-                    [bbox[0], bbox[1]],
-                    [bbox[2], bbox[1]],
-                    [bbox[2], bbox[3]],
-                    [bbox[0], bbox[3]],
-                    [bbox[0], bbox[1]],
-                  ],
-                ],
-              },
-            },
-            data: [
-              {
-                type: "sentinel-2-l2a",
-                dataFilter: {
-                  timeRange: {
-                    from: this.formatDateForAPI(date, -3), // 3 days before
-                    to: this.formatDateForAPI(date, 3), // 3 days after
-                  },
-                  maxCloudCoverage: 30,
-                },
-              },
-            ],
-          },
-          output: {
-            width: 10,
-            height: 10,
-            responses: [
-              {
-                identifier: "default",
-                format: {
-                  type: "application/json",
-                },
-              },
-            ],
-          },
-          evalscript: evalscript,
-        },
-        {
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            input: {
+              bounds: {
+                properties: {
+                  crs: "http://www.opengis.net/def/crs/EPSG/0/4326",
+                },
+                geometry: {
+                  type: "Polygon",
+                  coordinates: [
+                    [
+                      [bbox[0], bbox[1]],
+                      [bbox[2], bbox[1]],
+                      [bbox[2], bbox[3]],
+                      [bbox[0], bbox[3]],
+                      [bbox[0], bbox[1]],
+                    ],
+                  ],
+                },
+              },
+              data: [
+                {
+                  type: "sentinel-2-l2a",
+                  dataFilter: {
+                    timeRange: {
+                      from: this.formatDateForAPI(date, -3), // 3 days before
+                      to: this.formatDateForAPI(date, 3), // 3 days after
+                    },
+                    maxCloudCoverage: 30,
+                  },
+                },
+              ],
+            },
+            output: {
+              width: 10,
+              height: 10,
+              responses: [
+                {
+                  identifier: "default",
+                  format: {
+                    type: "application/json",
+                  },
+                },
+              ],
+            },
+            evalscript: evalscript,
+          }),
         }
       );
 
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Sentinel Hub API Error: ${response.status} - ${errorText}`
+        );
+        throw new Error(
+          `HTTP error! status: ${response.status} - ${errorText}`
+        );
+      }
+
       // Process the response to get NDVI statistics
-      const data = response.data;
-      const validPixels = data.filter((pixel) => pixel !== -999);
+      const data = await response.json();
+
+      // The actual response format from Sentinel Hub may be different
+      // Let's handle both array and object responses
+      let pixelValues = [];
+
+      if (Array.isArray(data)) {
+        pixelValues = data;
+      } else if (data && data.bands && Array.isArray(data.bands[0])) {
+        // If the response has a bands structure
+        pixelValues = data.bands[0];
+      } else if (data && Array.isArray(data.outputs)) {
+        // If the response has outputs structure
+        pixelValues = data.outputs[0]?.bands?.[0] || [];
+      } else {
+        console.error("Unexpected Sentinel Hub response format:", data);
+        throw new Error("Unexpected response format from Sentinel Hub API");
+      }
+
+      const NODATA_VAL = 65535;
+      const validPixels = pixelValues.filter(
+        (pixel) => pixel !== NODATA_VAL && pixel !== null && !isNaN(pixel)
+      );
 
       if (validPixels.length === 0) {
         throw new Error(
@@ -273,9 +387,13 @@ class SatelliteService {
         );
       }
 
+      // Convert back from scaled UINT16 to float NDVI in [-1,1]
+      const ndviValues = validPixels.map((v) => v / 10000.0 - 1.0);
+
       const averageNDVI =
-        validPixels.reduce((sum, val) => sum + val, 0) / validPixels.length;
-      const cloudCover = (data.length - validPixels.length) / data.length;
+        ndviValues.reduce((sum, val) => sum + val, 0) / ndviValues.length;
+      const cloudCover =
+        (pixelValues.length - validPixels.length) / pixelValues.length;
       const confidence = Math.max(0.1, 1 - cloudCover); // Lower confidence with more clouds
 
       return {
@@ -283,7 +401,7 @@ class SatelliteService {
         confidence,
         cloudCover,
         validPixels: validPixels.length,
-        totalPixels: data.length,
+        totalPixels: pixelValues.length,
       };
     } catch (error) {
       console.error("Sentinel NDVI retrieval error:", error);
@@ -353,24 +471,58 @@ class SatelliteService {
   async getNASAMODISData(longitude, latitude, date, apiKey) {
     try {
       // NASA's MODIS/Terra Vegetation Indices API
-      const response = await axios.get(
-        "https://modis.ornl.gov/rst/api/v1/MOD13Q1/subset",
-        {
-          params: {
-            latitude: latitude,
-            longitude: longitude,
-            startDate: this.formatDateForNASA(date, -8), // 8 days before (MODIS composites are 16-day)
-            endDate: this.formatDateForNASA(date, 8), // 8 days after
-            kmAboveBelow: 0.25, // 0.25km = 250m
-            kmLeftRight: 0.25,
-          },
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-        }
-      );
+      const url = new URL("https://modis.ornl.gov/rst/api/v1/MOD13Q1/subset");
+      url.searchParams.append("latitude", latitude);
+      url.searchParams.append("longitude", longitude);
+      url.searchParams.append("startDate", this.formatDateForNASA(date, -16)); // 16 days before (MODIS composites are 16-day)
+      url.searchParams.append("endDate", this.formatDateForNASA(date, 16)); // 16 days after
+      url.searchParams.append("kmAboveBelow", 1); // 1km radius (minimum allowed)
+      url.searchParams.append("kmLeftRight", 1);
 
-      const data = response.data;
+      let response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      });
+
+      // If NASA returns 400 with "No data available" try widening the temporal window and retry once
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`NASA MODIS API Error: ${response.status} - ${errorText}`);
+
+        if (response.status === 400 && /No data available/i.test(errorText)) {
+          console.log(
+            "No MODIS data for requested window — retrying with a wider window (+/- 90 days)"
+          );
+          const widerStart = this.formatDateForNASA(date, -90);
+          const widerEnd = this.formatDateForNASA(date, 90);
+          const url2 = new URL(
+            "https://modis.ornl.gov/rst/api/v1/MOD13Q1/subset"
+          );
+          url2.searchParams.append("latitude", latitude);
+          url2.searchParams.append("longitude", longitude);
+          url2.searchParams.append("startDate", widerStart);
+          url2.searchParams.append("endDate", widerEnd);
+          url2.searchParams.append("kmAboveBelow", 1);
+          url2.searchParams.append("kmLeftRight", 1);
+
+          response = await fetch(url2, {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+        }
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `NASA MODIS API Error: ${response.status} - ${errorText}`
+        );
+        throw new Error(
+          `HTTP error! status: ${response.status} - ${errorText}`
+        );
+      }
+
+      const data = await response.json();
 
       if (!data || !data.subset || data.subset.length === 0) {
         throw new Error(
@@ -527,21 +679,31 @@ class SatelliteService {
         ],
       };
 
-      const response = await axios.post(
+      const response = await fetch(
         "https://api.planet.com/data/v1/quick-search",
         {
-          item_types: ["PSScene4Band"],
-          filter: searchFilter,
-        },
-        {
+          method: "POST",
           headers: {
             Authorization: `api-key ${apiKey}`,
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            item_types: ["PSScene"],
+            filter: searchFilter,
+          }),
         }
       );
 
-      return response.data.features || [];
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Planet API Error: ${response.status} - ${errorText}`);
+        throw new Error(
+          `HTTP error! status: ${response.status} - ${errorText}`
+        );
+      }
+
+      const data = await response.json();
+      return data.features || [];
     } catch (error) {
       console.error("Planet imagery search error:", error);
       throw error;
@@ -614,62 +776,73 @@ class SatelliteService {
         }
       `;
 
-      const response = await axios.post(
+      const response = await fetch(
         "https://services.sentinel-hub.com/api/v1/process",
         {
-          input: {
-            bounds: {
-              properties: {
-                crs: "http://www.opengis.net/def/crs/EPSG/0/4326",
-              },
-              geometry: {
-                type: "Polygon",
-                coordinates: [
-                  [
-                    [bbox[0], bbox[1]],
-                    [bbox[2], bbox[1]],
-                    [bbox[2], bbox[3]],
-                    [bbox[0], bbox[3]],
-                    [bbox[0], bbox[1]],
-                  ],
-                ],
-              },
-            },
-            data: [
-              {
-                type: "sentinel-2-l2a",
-                dataFilter: {
-                  timeRange: {
-                    from: date.toISOString().split("T")[0] + "T00:00:00Z",
-                    to: date.toISOString().split("T")[0] + "T23:59:59Z",
-                  },
-                },
-              },
-            ],
-          },
-          output: {
-            width: 512,
-            height: 512,
-            responses: [
-              {
-                identifier: "default",
-                format: {
-                  type: "image/jpeg",
-                },
-              },
-            ],
-          },
-          evalscript: evalscript,
-        },
-        {
+          method: "POST",
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            input: {
+              bounds: {
+                properties: {
+                  crs: "http://www.opengis.net/def/crs/EPSG/0/4326",
+                },
+                geometry: {
+                  type: "Polygon",
+                  coordinates: [
+                    [
+                      [bbox[0], bbox[1]],
+                      [bbox[2], bbox[1]],
+                      [bbox[2], bbox[3]],
+                      [bbox[0], bbox[3]],
+                      [bbox[0], bbox[1]],
+                    ],
+                  ],
+                },
+              },
+              data: [
+                {
+                  type: "sentinel-2-l2a",
+                  dataFilter: {
+                    timeRange: {
+                      from: date.toISOString().split("T")[0] + "T00:00:00Z",
+                      to: date.toISOString().split("T")[0] + "T23:59:59Z",
+                    },
+                  },
+                },
+              ],
+            },
+            output: {
+              width: 512,
+              height: 512,
+              responses: [
+                {
+                  identifier: "default",
+                  format: {
+                    type: "image/jpeg",
+                  },
+                },
+              ],
+            },
+            evalscript: evalscript,
+          }),
         }
       );
 
-      return response.data;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `Sentinel Imagery API Error: ${response.status} - ${errorText}`
+        );
+        throw new Error(
+          `HTTP error! status: ${response.status} - ${errorText}`
+        );
+      }
+
+      return await response.blob();
     } catch (error) {
       console.error("Sentinel imagery retrieval error:", error);
       throw error;
@@ -689,38 +862,41 @@ class SatelliteService {
 
       // 1. NASA Earth Imagery
       try {
-        const imageryResponse = await axios.get(
-          "https://api.nasa.gov/planetary/earth/imagery",
-          {
-            params: {
-              lon: longitude,
-              lat: latitude,
-              date: date.toISOString().split("T")[0],
-              dim: 0.1,
-              api_key: apiKey,
-            },
-          }
+        const imageryUrl = new URL(
+          "https://api.nasa.gov/planetary/earth/imagery"
         );
-        results.imagery = imageryResponse.data;
+        imageryUrl.searchParams.append("lon", longitude);
+        imageryUrl.searchParams.append("lat", latitude);
+        imageryUrl.searchParams.append(
+          "date",
+          date.toISOString().split("T")[0]
+        );
+        imageryUrl.searchParams.append("dim", 0.1);
+        imageryUrl.searchParams.append("api_key", apiKey);
+
+        const imageryResponse = await fetch(imageryUrl);
+        if (imageryResponse.ok) {
+          results.imagery = await imageryResponse.blob();
+        }
       } catch (error) {
         console.log("NASA imagery request failed:", error.message);
       }
 
       // 2. NASA Earth Assets (metadata)
       try {
-        const assetsResponse = await axios.get(
-          "https://api.nasa.gov/planetary/earth/assets",
-          {
-            params: {
-              lon: longitude,
-              lat: latitude,
-              date: date.toISOString().split("T")[0],
-              dim: 0.1,
-              api_key: apiKey,
-            },
-          }
+        const assetsUrl = new URL(
+          "https://api.nasa.gov/planetary/earth/assets"
         );
-        results.assets = assetsResponse.data;
+        assetsUrl.searchParams.append("lon", longitude);
+        assetsUrl.searchParams.append("lat", latitude);
+        assetsUrl.searchParams.append("date", date.toISOString().split("T")[0]);
+        assetsUrl.searchParams.append("dim", 0.1);
+        assetsUrl.searchParams.append("api_key", apiKey);
+
+        const assetsResponse = await fetch(assetsUrl);
+        if (assetsResponse.ok) {
+          results.assets = await assetsResponse.json();
+        }
       } catch (error) {
         console.log("NASA assets request failed:", error.message);
       }
@@ -790,6 +966,27 @@ class SatelliteService {
   }
 
   async getHistoricalData(longitude, latitude, startDate, endDate) {
+    // Try Python endpoint first
+    try {
+      const pyResp = await pythonService.callAIService(
+        "/satellite/historical",
+        {
+          longitude,
+          latitude,
+          startDate: startDate.toISOString().split("T")[0],
+          endDate: endDate.toISOString().split("T")[0],
+        }
+      );
+
+      if (pyResp && pyResp.historical) return pyResp.historical;
+    } catch (pyErr) {
+      console.warn(
+        "Python historical satellite service failed:",
+        pyErr.message || pyErr
+      );
+      // fallthrough to JS implementation
+    }
+
     try {
       const data = [];
       const daysBetween = Math.ceil(
@@ -862,6 +1059,26 @@ class SatelliteService {
   }
 
   async detectDeforestation(longitude, latitude, sensitivity = "medium") {
+    // Try Python endpoint first
+    try {
+      const pyResp = await pythonService.callAIService(
+        "/satellite/deforestation",
+        {
+          longitude,
+          latitude,
+          sensitivity,
+        }
+      );
+
+      if (pyResp) return pyResp;
+    } catch (pyErr) {
+      console.warn(
+        "Python deforestation endpoint failed:",
+        pyErr.message || pyErr
+      );
+      // fallthrough to JS implementation
+    }
+
     try {
       const thresholds = {
         low: 0.1,

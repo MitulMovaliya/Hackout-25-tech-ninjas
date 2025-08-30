@@ -3,15 +3,28 @@ import { Leaf } from "lucide-react"; // icon
 import { Link, useNavigate } from "react-router-dom";
 
 function LoginPage() {
-  const serverurl=import.meta.env.VITE_SERVER_URL
+  const serverurl = import.meta.env.VITE_SERVER_URL;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const navigate = useNavigate();
-
+  React.useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      navigate("/profile");
+    }
+  }, [navigate]);
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setError(""); // Clear previous errors
+
+    // Client-side validation
+    if (!email.trim() || !password.trim()) {
+      setError("Please fill in all fields");
+      return;
+    }
 
     try {
       setLoading(true);
@@ -21,13 +34,38 @@ function LoginPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ emailOrUsername: email, password }),
       });
 
-      const data = await res.json();
+      const { data } = await res.json();
 
       if (!res.ok) {
-        alert(data.message || "Login failed ❌");
+        // Handle specific HTTP status codes
+        switch (res.status) {
+          case 400:
+            setError("Invalid email or password format");
+            break;
+          case 401:
+            setError("Invalid credentials");
+            break;
+          case 404:
+            setError("User not found");
+            break;
+          case 429:
+            setError("Too many login attempts. Please try again later");
+            break;
+          case 500:
+            setError("Server error. Please try again later");
+            break;
+          default:
+            setError(data.message || "Login failed");
+        }
+        return;
+      }
+
+      // Validate response data
+      if (!data.token || !data.user) {
+        setError("Invalid response from server");
         return;
       }
 
@@ -35,13 +73,19 @@ function LoginPage() {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
 
-      alert(`Welcome back, ${data.user.fullName} 🌱`);
-
       // Redirect after login
       navigate("/dashboard");
     } catch (err) {
-      console.error(err);
-      alert("Something went wrong. Please try again.");
+      console.error("Login error:", err);
+
+      // Handle network errors
+      if (err.name === "TypeError" && err.message.includes("fetch")) {
+        setError("Network error. Please check your connection");
+      } else if (err.name === "AbortError") {
+        setError("Request timeout. Please try again");
+      } else {
+        setError("Something went wrong. Please try again");
+      }
     } finally {
       setLoading(false);
     }
@@ -78,6 +122,13 @@ function LoginPage() {
           Reconnect and continue growing with us 🌿
         </p>
 
+        {/* Error Message */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Email */}
@@ -89,7 +140,7 @@ function LoginPage() {
               Email or Username
             </label>
             <input
-              type="email"
+              type="text"
               id="email"
               placeholder="Enter your Email/Username"
               value={email}

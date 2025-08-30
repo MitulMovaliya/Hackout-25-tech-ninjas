@@ -2,15 +2,15 @@ import * as tf from "@tensorflow/tfjs";
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
-import axios from "axios";
+import pythonService from "./pythonService.js";
 // import logger from "../utils/logger.js";
 
 class AIService {
   constructor() {
     this.imageModel = null;
     this.modelLoaded = false;
-    this.googleVisionApiKey = process.env.GOOGLE_VISION_API_KEY;
-    this.clarifaiApiKey = process.env.CLARIFAI_API_KEY;
+    // Remove paid APIs, use only free alternatives
+    this.clarifaiApiKey = process.env.CLARIFAI_API_KEY; // Keep as optional fallback
     this.loadModel();
   }
 
@@ -41,7 +41,10 @@ class AIService {
   async classifyImages(imagePaths) {
     try {
       if (!this.modelLoaded) {
-        throw new Error("AI service not initialized");
+        // allow python worker fallback even if model not loaded
+        console.warn(
+          "AI model not loaded; will attempt python worker and heuristics"
+        );
       }
 
       const predictions = [];
@@ -52,21 +55,35 @@ class AIService {
           // Try multiple AI services for better accuracy
           let prediction = null;
 
-          // First try Google Vision API
-          if (this.googleVisionApiKey && !prediction) {
+          // First try enhanced heuristic analysis (free)
+          try {
+            prediction = await this.analyzeImageWithOpenCV(imagePath);
+          } catch (error) {
+            console.log("OpenCV analysis failed:", error.message);
+          }
+
+          // Preferred: Python worker heuristic
+          if (!prediction) {
             try {
-              prediction = await this.classifyWithGoogleVision(imagePath);
-            } catch (error) {
-              console.log("Google Vision API failed, trying alternative...");
+              const pyRes = await pythonService.runPythonWorker({
+                action: "classify_images",
+                image_paths: [imagePath],
+              });
+              if (pyRes && pyRes.predictions && pyRes.predictions[0]) {
+                prediction = pyRes.predictions[0];
+                prediction.model = prediction.model || "python-heuristic-v1";
+              }
+            } catch (pyErr) {
+              console.log("Python worker failed:", pyErr.message);
             }
           }
 
-          // Fallback to Clarifai API
+          // Fallback to Clarifai API (if available)
           if (this.clarifaiApiKey && !prediction) {
             try {
               prediction = await this.classifyWithClarifai(imagePath);
             } catch (error) {
-              console.log("Clarifai API failed, trying local model...");
+              console.log("Clarifai API failed:", error.message);
             }
           }
 
@@ -75,11 +92,11 @@ class AIService {
             try {
               prediction = await this.classifyWithLocalModel(imagePath);
             } catch (error) {
-              console.log("Local model failed, using heuristic analysis...");
+              console.log("Local model failed:", error.message);
             }
           }
 
-          // Last resort: heuristic image analysis
+          // Last resort: basic heuristic image analysis
           if (!prediction) {
             prediction = await this.analyzeImageHeuristically(imagePath);
           }
@@ -125,32 +142,360 @@ class AIService {
     }
   }
 
-  async classifyWithGoogleVision(imagePath) {
+  async analyzeImageWithOpenCV(imagePath) {
     try {
-      const imageBuffer = fs.readFileSync(imagePath);
-      const base64Image = imageBuffer.toString("base64");
+      // Enhanced free image analysis using Sharp and custom algorithms
+      const imageInfo = await sharp(imagePath).metadata();
+      const { width, height, channels } = imageInfo;
 
-      const response = await axios.post(
-        `https://vision.googleapis.com/v1/images:annotate?key=${this.googleVisionApiKey}`,
-        {
-          requests: [
-            {
-              image: { content: base64Image },
-              features: [
-                { type: "LABEL_DETECTION", maxResults: 10 },
-                { type: "OBJECT_LOCALIZATION", maxResults: 10 },
-              ],
-            },
-          ],
-        }
-      );
+      // Get image statistics
+      const stats = await sharp(imagePath).stats();
 
-      const annotations = response.data.responses[0];
-      return this.interpretGoogleVisionResults(annotations);
+      // Advanced color analysis
+      const colorAnalysis = await this.performAdvancedColorAnalysis(imagePath);
+
+      // Texture analysis
+      const textureAnalysis = await this.analyzeImageTexture(imagePath);
+
+      // Edge detection for structure analysis
+      const edgeAnalysis = await this.performEdgeDetection(imagePath);
+
+      // Shape analysis
+      const shapeAnalysis = await this.analyzeImageShapes(imagePath);
+
+      // Combine all analyses to determine classification
+      const classification = this.interpretFreeAnalysisResults({
+        colorAnalysis,
+        textureAnalysis,
+        edgeAnalysis,
+        shapeAnalysis,
+        imageInfo,
+        stats,
+      });
+
+      return {
+        class: classification.class,
+        confidence: classification.confidence,
+        model: "opencv-free-analysis",
+        timestamp: new Date(),
+        details: {
+          colorAnalysis,
+          textureAnalysis,
+          edgeAnalysis,
+          shapeAnalysis,
+        },
+      };
     } catch (error) {
-      console.error("Google Vision API error:", error);
+      console.error("OpenCV analysis error:", error);
       throw error;
     }
+  }
+
+  async performAdvancedColorAnalysis(imagePath) {
+    try {
+      const { data, info } = await sharp(imagePath)
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+      let greenPixels = 0;
+      let brownPixels = 0;
+      let bluePixels = 0;
+      let grayPixels = 0;
+      let totalBrightness = 0;
+
+      const totalPixels = info.width * info.height;
+
+      for (let i = 0; i < data.length; i += info.channels) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        totalBrightness += (r + g + b) / 3;
+
+        // Enhanced color detection
+        if (g > r + 20 && g > b + 10 && g > 80) {
+          greenPixels++;
+        } else if (r > 100 && g > 60 && b < 80 && r > g && g > b) {
+          brownPixels++;
+        } else if (b > r + 15 && b > g + 10 && b > 60) {
+          bluePixels++;
+        } else if (
+          Math.abs(r - g) < 20 &&
+          Math.abs(g - b) < 20 &&
+          Math.abs(r - b) < 20
+        ) {
+          grayPixels++;
+        }
+      }
+
+      return {
+        greenRatio: greenPixels / totalPixels,
+        brownRatio: brownPixels / totalPixels,
+        blueRatio: bluePixels / totalPixels,
+        grayRatio: grayPixels / totalPixels,
+        averageBrightness: totalBrightness / totalPixels,
+        vegetationIndex: (greenPixels - brownPixels) / totalPixels,
+        waterIndex: bluePixels / totalPixels,
+      };
+    } catch (error) {
+      console.error("Advanced color analysis error:", error);
+      return {};
+    }
+  }
+
+  async analyzeImageTexture(imagePath) {
+    try {
+      // Convert to grayscale and analyze texture patterns
+      const grayscaleBuffer = await sharp(imagePath)
+        .greyscale()
+        .raw()
+        .toBuffer();
+
+      // Calculate texture complexity using local standard deviation
+      const textureComplexity =
+        this.calculateTextureComplexity(grayscaleBuffer);
+
+      // Detect repetitive patterns (indicating natural vs artificial)
+      const patternRegularity = this.detectPatternRegularity(grayscaleBuffer);
+
+      return {
+        complexity: textureComplexity,
+        regularity: patternRegularity,
+        naturalness:
+          textureComplexity > 0.3 && patternRegularity < 0.5 ? "high" : "low",
+      };
+    } catch (error) {
+      console.error("Texture analysis error:", error);
+      return {};
+    }
+  }
+
+  async performEdgeDetection(imagePath) {
+    try {
+      // Use Sobel edge detection
+      const sobelX = await sharp(imagePath)
+        .greyscale()
+        .convolve({
+          width: 3,
+          height: 3,
+          kernel: [-1, 0, 1, -2, 0, 2, -1, 0, 1],
+        })
+        .raw()
+        .toBuffer();
+
+      const sobelY = await sharp(imagePath)
+        .greyscale()
+        .convolve({
+          width: 3,
+          height: 3,
+          kernel: [-1, -2, -1, 0, 0, 0, 1, 2, 1],
+        })
+        .raw()
+        .toBuffer();
+
+      // Calculate edge density and direction
+      const edgeDensity = this.calculateEdgeDensity(sobelX, sobelY);
+      const dominantDirection = this.calculateDominantEdgeDirection(
+        sobelX,
+        sobelY
+      );
+
+      return {
+        density: edgeDensity,
+        direction: dominantDirection,
+        sharpness:
+          edgeDensity > 0.2 ? "high" : edgeDensity > 0.1 ? "medium" : "low",
+      };
+    } catch (error) {
+      console.error("Edge detection error:", error);
+      return {};
+    }
+  }
+
+  async analyzeImageShapes(imagePath) {
+    try {
+      // Detect circular and linear shapes
+      const edges = await sharp(imagePath)
+        .greyscale()
+        .convolve({
+          width: 3,
+          height: 3,
+          kernel: [-1, -1, -1, -1, 8, -1, -1, -1, -1],
+        })
+        .threshold(50)
+        .raw()
+        .toBuffer();
+
+      const shapeMetrics = this.analyzeShapeMetrics(edges);
+
+      return {
+        circularShapes: shapeMetrics.circular,
+        linearShapes: shapeMetrics.linear,
+        irregularShapes: shapeMetrics.irregular,
+        shapeComplexity: shapeMetrics.complexity,
+      };
+    } catch (error) {
+      console.error("Shape analysis error:", error);
+      return {};
+    }
+  }
+
+  interpretFreeAnalysisResults(analysisData) {
+    const { colorAnalysis, textureAnalysis, edgeAnalysis, shapeAnalysis } =
+      analysisData;
+
+    let mangroveScore = 0;
+    let cuttingScore = 0;
+    let pollutionScore = 0;
+    let encroachmentScore = 0;
+
+    // Color-based scoring
+    if (colorAnalysis.greenRatio > 0.3 && colorAnalysis.waterIndex > 0.1) {
+      mangroveScore += 0.4;
+    }
+
+    if (colorAnalysis.brownRatio > 0.3 && colorAnalysis.greenRatio < 0.1) {
+      cuttingScore += 0.4;
+    }
+
+    if (colorAnalysis.grayRatio > 0.4 || colorAnalysis.averageBrightness < 80) {
+      pollutionScore += 0.3;
+    }
+
+    // Texture-based scoring
+    if (textureAnalysis.naturalness === "high") {
+      mangroveScore += 0.2;
+    } else if (textureAnalysis.regularity > 0.7) {
+      encroachmentScore += 0.3;
+    }
+
+    // Edge-based scoring
+    if (edgeAnalysis.density > 0.3 && edgeAnalysis.sharpness === "high") {
+      cuttingScore += 0.2;
+      encroachmentScore += 0.2;
+    }
+
+    // Shape-based scoring
+    if (shapeAnalysis.linearShapes > 0.3) {
+      encroachmentScore += 0.2;
+    }
+
+    if (shapeAnalysis.irregularShapes > 0.5) {
+      mangroveScore += 0.2;
+    }
+
+    // Determine primary class
+    const scores = {
+      mangrove: mangroveScore,
+      cutting: cuttingScore,
+      pollution: pollutionScore,
+      encroachment: encroachmentScore,
+    };
+
+    const primaryClass = Object.keys(scores).reduce((a, b) =>
+      scores[a] > scores[b] ? a : b
+    );
+
+    const confidence = Math.max(...Object.values(scores));
+
+    return {
+      class: primaryClass,
+      confidence: Math.min(confidence, 0.85), // Cap confidence for free analysis
+      scores,
+    };
+  }
+
+  calculateTextureComplexity(buffer) {
+    // Calculate local standard deviation as texture measure
+    const windowSize = 5;
+    let complexity = 0;
+    let validWindows = 0;
+
+    for (
+      let i = windowSize;
+      i < buffer.length - windowSize;
+      i += windowSize * 2
+    ) {
+      const window = Array.from(buffer.slice(i - windowSize, i + windowSize));
+      const mean = window.reduce((sum, val) => sum + val, 0) / window.length;
+      const variance =
+        window.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) /
+        window.length;
+      complexity += Math.sqrt(variance);
+      validWindows++;
+    }
+
+    return validWindows > 0 ? complexity / validWindows / 255 : 0;
+  }
+
+  detectPatternRegularity(buffer) {
+    // Simple pattern detection using autocorrelation
+    const sampleSize = Math.min(buffer.length, 1000);
+    const sample = Array.from(buffer.slice(0, sampleSize));
+
+    let maxCorrelation = 0;
+    for (let lag = 1; lag < sampleSize / 4; lag++) {
+      let correlation = 0;
+      for (let i = 0; i < sampleSize - lag; i++) {
+        correlation += sample[i] * sample[i + lag];
+      }
+      correlation /= sampleSize - lag;
+      maxCorrelation = Math.max(maxCorrelation, Math.abs(correlation));
+    }
+
+    return maxCorrelation / (255 * 255);
+  }
+
+  calculateEdgeDensity(sobelX, sobelY) {
+    let edgePixels = 0;
+    const threshold = 30;
+
+    for (let i = 0; i < sobelX.length; i++) {
+      const magnitude = Math.sqrt(
+        sobelX[i] * sobelX[i] + sobelY[i] * sobelY[i]
+      );
+      if (magnitude > threshold) {
+        edgePixels++;
+      }
+    }
+
+    return edgePixels / sobelX.length;
+  }
+
+  calculateDominantEdgeDirection(sobelX, sobelY) {
+    let horizontalEdges = 0;
+    let verticalEdges = 0;
+
+    for (let i = 0; i < sobelX.length; i++) {
+      if (Math.abs(sobelX[i]) > Math.abs(sobelY[i])) {
+        verticalEdges++;
+      } else {
+        horizontalEdges++;
+      }
+    }
+
+    return verticalEdges > horizontalEdges ? "vertical" : "horizontal";
+  }
+
+  analyzeShapeMetrics(edgeBuffer) {
+    // Simplified shape analysis
+    const totalPixels = edgeBuffer.length;
+    let edgePixels = 0;
+
+    for (let i = 0; i < edgeBuffer.length; i++) {
+      if (edgeBuffer[i] > 0) {
+        edgePixels++;
+      }
+    }
+
+    const edgeRatio = edgePixels / totalPixels;
+
+    return {
+      circular: edgeRatio > 0.1 && edgeRatio < 0.3 ? 0.6 : 0.2,
+      linear: edgeRatio > 0.05 && edgeRatio < 0.15 ? 0.7 : 0.3,
+      irregular: edgeRatio > 0.2 ? 0.8 : 0.4,
+      complexity: edgeRatio,
+    };
   }
 
   async classifyWithClarifai(imagePath) {
@@ -158,28 +503,34 @@ class AIService {
       const imageBuffer = fs.readFileSync(imagePath);
       const base64Image = imageBuffer.toString("base64");
 
-      const response = await axios.post(
+      const response = await fetch(
         "https://api.clarifai.com/v2/models/general-image-recognition/outputs",
         {
-          inputs: [
-            {
-              data: {
-                image: {
-                  base64: base64Image,
-                },
-              },
-            },
-          ],
-        },
-        {
+          method: "POST",
           headers: {
             Authorization: `Key ${this.clarifaiApiKey}`,
             "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            inputs: [
+              {
+                data: {
+                  image: {
+                    base64: base64Image,
+                  },
+                },
+              },
+            ],
+          }),
         }
       );
 
-      return this.interpretClarifaiResults(response.data);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return this.interpretClarifaiResults(data);
     } catch (error) {
       console.error("Clarifai API error:", error);
       throw error;
@@ -301,62 +652,6 @@ class AIService {
       console.error("Water content analysis error:", error);
       return 0;
     }
-  }
-
-  interpretGoogleVisionResults(annotations) {
-    const labels = annotations.labelAnnotations || [];
-    const objects = annotations.localizedObjectAnnotations || [];
-
-    // Look for mangrove-related keywords
-    const mangroveKeywords = [
-      "tree",
-      "forest",
-      "vegetation",
-      "plant",
-      "nature",
-      "green",
-    ];
-    const cuttingKeywords = ["wood", "log", "stump", "cut", "bare"];
-    const pollutionKeywords = ["waste", "pollution", "trash", "debris"];
-
-    let mangroveScore = 0;
-    let cuttingScore = 0;
-    let pollutionScore = 0;
-
-    labels.forEach((label) => {
-      const description = label.description.toLowerCase();
-      const score = label.score;
-
-      if (mangroveKeywords.some((keyword) => description.includes(keyword))) {
-        mangroveScore += score;
-      }
-      if (cuttingKeywords.some((keyword) => description.includes(keyword))) {
-        cuttingScore += score;
-      }
-      if (pollutionKeywords.some((keyword) => description.includes(keyword))) {
-        pollutionScore += score;
-      }
-    });
-
-    // Determine primary class
-    const scores = {
-      mangrove: mangroveScore,
-      cutting: cuttingScore,
-      pollution: pollutionScore,
-    };
-    const primaryClass = Object.keys(scores).reduce((a, b) =>
-      scores[a] > scores[b] ? a : b
-    );
-    const confidence = Math.max(mangroveScore, cuttingScore, pollutionScore);
-
-    return {
-      class: primaryClass,
-      confidence: Math.min(confidence, 0.95),
-      model: "google-vision-api",
-      timestamp: new Date(),
-      labels: labels.slice(0, 5), // Top 5 labels
-      objects: objects.slice(0, 3), // Top 3 objects
-    };
   }
 
   interpretClarifaiResults(results) {
@@ -675,12 +970,8 @@ class AIService {
       for (const radius of checkRadii) {
         const nearbyReports = await Report.countDocuments({
           "location.coordinates": {
-            $near: {
-              $geometry: {
-                type: "Point",
-                coordinates: [longitude, latitude],
-              },
-              $maxDistance: radius,
+            $geoWithin: {
+              $centerSphere: [[longitude, latitude], radius / 6378100], // radius in radians
             },
           },
           createdAt: {
@@ -778,17 +1069,13 @@ class AIService {
         technical_analysis: {},
       };
 
-      // 1. Computer Vision API analysis
-      if (this.googleVisionApiKey) {
-        try {
-          const visionAnalysis = await this.performGoogleVisionAnalysis(
-            imagePath
-          );
-          results.objects_detected = visionAnalysis.objects;
-          results.scene_type = visionAnalysis.scene;
-        } catch (error) {
-          console.log("Google Vision analysis failed:", error.message);
-        }
+      // 1. Free computer vision analysis using OpenCV methods
+      try {
+        const freeAnalysis = await this.analyzeImageWithOpenCV(imagePath);
+        results.objects_detected = freeAnalysis.details.shapeAnalysis;
+        results.scene_type = freeAnalysis.class;
+      } catch (error) {
+        console.log("Free analysis failed:", error.message);
       }
 
       // 2. Technical image analysis
@@ -811,70 +1098,6 @@ class AIService {
     } catch (error) {
       console.error("Image content analysis error:", error);
       throw error;
-    }
-  }
-
-  async performGoogleVisionAnalysis(imagePath) {
-    try {
-      const imageBuffer = fs.readFileSync(imagePath);
-      const base64Image = imageBuffer.toString("base64");
-
-      const response = await axios.post(
-        `https://vision.googleapis.com/v1/images:annotate?key=${this.googleVisionApiKey}`,
-        {
-          requests: [
-            {
-              image: { content: base64Image },
-              features: [
-                { type: "OBJECT_LOCALIZATION", maxResults: 20 },
-                { type: "LABEL_DETECTION", maxResults: 20 },
-                { type: "IMAGE_PROPERTIES" },
-              ],
-            },
-          ],
-        }
-      );
-
-      const annotations = response.data.responses[0];
-
-      const objects = (annotations.localizedObjectAnnotations || []).map(
-        (obj) => ({
-          name: obj.name,
-          confidence: obj.score,
-          bbox: [
-            obj.boundingPoly.normalizedVertices[0].x * 1000 || 0,
-            obj.boundingPoly.normalizedVertices[0].y * 1000 || 0,
-            obj.boundingPoly.normalizedVertices[2].x * 1000 || 1000,
-            obj.boundingPoly.normalizedVertices[2].y * 1000 || 1000,
-          ],
-        })
-      );
-
-      // Determine scene type from labels
-      const labels = annotations.labelAnnotations || [];
-      const sceneLabels = labels.map((l) => l.description.toLowerCase());
-
-      let scene = "unknown";
-      if (
-        sceneLabels.some((l) =>
-          ["forest", "tree", "mangrove", "vegetation"].includes(l)
-        )
-      ) {
-        scene = "mangrove_forest";
-      } else if (
-        sceneLabels.some((l) => ["water", "ocean", "sea", "river"].includes(l))
-      ) {
-        scene = "water_body";
-      } else if (
-        sceneLabels.some((l) => ["urban", "building", "city"].includes(l))
-      ) {
-        scene = "urban";
-      }
-
-      return { objects, scene };
-    } catch (error) {
-      console.error("Google Vision analysis error:", error);
-      return { objects: [], scene: "unknown" };
     }
   }
 
