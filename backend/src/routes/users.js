@@ -3,7 +3,6 @@ const router = express.Router();
 import User from "../models/User.js";
 import Report from "../models/Report.js";
 import auth from "../middleware/auth.js";
-// import logger from "../utils/logger.js";
 
 // @route   GET /api/users/:id
 // @desc    Get user profile
@@ -23,9 +22,7 @@ router.get("/:id", auth, async (req, res) => {
       });
     }
 
-    const user = await User.findById(userId).select(
-      "-password -verificationToken -passwordResetToken"
-    );
+    const user = await User.findById(userId).select("-password ");
 
     if (!user) {
       return res.status(404).json({

@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js";
+import emailService from "../services/emailService.js";
 // import logger from "../utils/logger.js";
-// import { sendEmail } from "../services/emailService.js";
 
 // Generate JWT token
 const generateToken = (userId) => {
@@ -47,6 +47,15 @@ const register = async (req, res) => {
 
     // Generate token
     const token = generateToken(user._id);
+
+    // Send welcome email
+    try {
+      await emailService.sendWelcomeEmail(user);
+      console.log(`Welcome email sent to: ${email}`);
+    } catch (emailError) {
+      console.error(`Failed to send welcome email to ${email}:`, emailError);
+      // Don't fail registration if email fails
+    }
 
     console.log(`New user registered: ${email}`);
 

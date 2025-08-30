@@ -2,8 +2,8 @@
 import Navbar from "../Components/Navbar";
 import { Card, CardHeader, CardContent, CardTitle } from "../Components/Card";
 import { Badge } from "../Components/Badge";
-
-import Button from "../Components/Button";
+import Footer from "../Components/footer.jsx";
+import Button from "../Components/Button.jsx";
 
 
 // ✅ Icons (minimal emoji fallback)
@@ -13,13 +13,13 @@ const MapPin = () => <span>📍</span>;
 const Clock = () => <span>⏰</span>;
 const Users = () => <span>👥</span>;
 const Star = () => <span>⭐</span>;
-const TreePine = () => <span>🌲</span>;
+const TreePine = () => <span className="text-xl">🌲</span>;
 
 // ✅ Home Page
 const Home = () => {
   return (
     <div className="min-h-screen bg-gray-50">
-      <Navigation />
+      <Navbar />
       <main className="pt-20 pb-8">
         {/* Hero Section */}
         <section className="bg-green-700 text-white py-16">
@@ -147,7 +147,7 @@ const Home = () => {
         {/* CTA */}
         <section className="py-12 bg-gradient-to-r from-green-600 to-emerald-500 text-white">
           <div className="container mx-auto px-4 text-center">
-            <TreePine className="h-16 w-16 mx-auto mb-6" />
+            <i className="fa-solid fa-tree text-5xl"></i>
             <h2 className="text-3xl font-bold mb-4">
               Join the Movement - Protect Mangroves Together
             </h2>
@@ -159,6 +159,7 @@ const Home = () => {
             </Button>
           </div>
         </section>
+        <Footer />
       </main>
     </div>
   );
