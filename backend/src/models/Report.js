@@ -118,6 +118,7 @@ const reportSchema = new mongoose.Schema(
             type: String, // 'duplicate_location', 'frequent_reporter', 'suspicious_timing'
             severity: String,
             description: String,
+            details: mongoose.Schema.Types.Mixed, // Allow flexible object structure
           },
         ],
         isSuspicious: Boolean,
@@ -324,7 +325,44 @@ reportSchema.methods.updateStatus = function (newStatus, reason = null) {
 
 // Method to add AI analysis results
 reportSchema.methods.addAIAnalysis = function (analysisData) {
-  this.aiAnalysis = { ...this.aiAnalysis.toObject(), ...analysisData };
+  // Ensure aiAnalysis exists and is a plain object
+  const currentAI =
+    this.aiAnalysis && typeof this.aiAnalysis.toObject === "function"
+      ? this.aiAnalysis.toObject()
+      : this.aiAnalysis || {};
+
+  // Sanitize anomalyDetection.flags if present to ensure objects are stored
+  if (analysisData?.anomalyDetection?.flags) {
+    try {
+      const rawFlags = analysisData.anomalyDetection.flags;
+      const sanitized = Array.isArray(rawFlags)
+        ? rawFlags.map((f) => {
+            // If a flag is a JSON string, try to parse it
+            if (typeof f === "string") {
+              try {
+                return JSON.parse(f);
+              } catch (e) {
+                return { description: f };
+              }
+            }
+            // Ensure basic fields exist
+            return {
+              type: f.type || "unknown",
+              severity: f.severity || "low",
+              description: f.description || "",
+              details: f.details || null,
+            };
+          })
+        : [];
+
+      analysisData.anomalyDetection.flags = sanitized;
+    } catch (err) {
+      // On any error, normalize to empty array to avoid schema cast issues
+      analysisData.anomalyDetection.flags = [];
+    }
+  }
+
+  this.aiAnalysis = { ...currentAI, ...analysisData };
   this.aiAnalysis.validatedAt = new Date();
 
   // Calculate overall score based on different AI components

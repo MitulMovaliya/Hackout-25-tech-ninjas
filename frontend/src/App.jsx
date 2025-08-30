@@ -5,6 +5,7 @@ import SignupPage from "./pages/SignUp";
 import Home from "./pages/Home";
 import Leaderboard from "./pages/LeaderBoard.jsx";
 import Report from "./pages/Report";
+import Profile from "./pages/Profile.jsx";
 
 const router = createBrowserRouter([
   {
@@ -26,6 +27,10 @@ const router = createBrowserRouter([
   {
     path: "/report",
     element: <Report />,
+  },
+  {
+    path: "/profile",
+    element: <Profile />,
   },
 ]);
 
