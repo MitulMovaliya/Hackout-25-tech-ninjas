@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../Components/Card";
 import { Input } from "../Components/Input";
 import { Label } from "../Components/Label";
 import { Textarea } from "../Components/Textarea";
-import { Progress } from "../Components/Progress";
+import { Progress } from "../Components/Progress.jsx";
 import {
   Select,
   SelectContent,
@@ -22,6 +22,9 @@ import {
 import Navbar from "../Components/Navbar";
 import { motion, AnimatePresence } from "framer-motion";
 
+const MAX_FILES = 5;
+const MAX_FILE_SIZE_MB = 10;
+
 const Report = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState({
@@ -31,37 +34,50 @@ const Report = () => {
     location: "",
     urgency: "",
   });
+  const [files, setFiles] = useState([]);
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const totalSteps = 3;
   const progress = (currentStep / totalSteps) * 100;
 
-  const handleNext = () => {
-    // Step 1 validation
+  const updateFormData = (field, value) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Validate step fields before proceeding
+  const validateStep = () => {
     if (currentStep === 1) {
       if (
-        !formData.title ||
+        !formData.title.trim() ||
         !formData.category ||
         !formData.urgency ||
-        !formData.description
+        !formData.description.trim()
       ) {
         alert("Please fill all required fields before continuing.");
-        return; // Stop if any required field is missing
+        return false;
       }
     }
-
-    // Step 2 validation
     if (currentStep === 2) {
-      if (!formData.location) {
+      if (!formData.location.trim()) {
         alert("Please provide a location before continuing.");
-        return;
+        return false;
+      }
+      if (files.length === 0) {
+        alert("Please upload at least one photo before continuing.");
+        return false;
       }
     }
+    return true;
+  };
+
+  const handleNext = () => {
+    if (!validateStep()) return;
 
     if (currentStep < totalSteps) {
       setCurrentStep(currentStep + 1);
     } else {
-      setIsSubmitted(true);
+      handleSubmit();
     }
   };
 
@@ -71,8 +87,60 @@ const Report = () => {
     }
   };
 
-  const updateFormData = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  // Validate files on selection
+  const handleFilesChange = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    if (selectedFiles.length + files.length > MAX_FILES) {
+      alert(`You can upload up to ${MAX_FILES} files.`);
+      return;
+    }
+    for (const file of selectedFiles) {
+      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+        alert(`File ${file.name} exceeds ${MAX_FILE_SIZE_MB}MB size limit.`);
+        return;
+      }
+    }
+    setFiles((prev) => [...prev, ...selectedFiles]);
+  };
+
+  // Remove file from list
+  const removeFile = (index) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async () => {
+  setIsSubmitting(true);
+  try {
+    await submitReport(formData, files);
+    setIsSubmitted(true);
+  } catch (error) {
+    alert("Error submitting report. Please try again.");
+    console.error(error);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  const submitReport = async (formData, files) => {
+    const data = new FormData();
+    for (const key in formData) {
+      data.append(key, formData[key]);
+    }
+    files.forEach((file, i) => {
+      data.append(`photos`, file);
+    });
+
+    const response = await fetch("/api/reports", {
+      method: "POST",
+      body: data,
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to submit report");
+    }
+
+    const result = await response.json();
+    return result;
   };
 
   if (isSubmitted) {
@@ -132,11 +200,9 @@ const Report = () => {
 
   return (
     <div className="min-h-screen relative bg-gradient-to-b from-ocean-light/10 to-green-50">
-      {/* Background blur effect */}
       <div className="absolute inset-0 bg-[url('/mangrove-bg.jpg')] bg-cover bg-center opacity-30 blur-md"></div>
       <div className="relative z-10">
         <Navbar />
-
         <main className="pt-20 pb-8">
           <div className="container mx-auto px-4 max-w-2xl">
             <div className="mb-8 text-center">
@@ -148,7 +214,6 @@ const Report = () => {
                 conservation opportunities.
               </p>
             </div>
-
             <Card className="shadow-md backdrop-blur-sm bg-white/60 rounded-2xl border border-neutral-200">
               <CardHeader>
                 <div className="flex justify-between items-center mb-4">
@@ -163,7 +228,6 @@ const Report = () => {
                 </div>
                 <Progress value={progress} className="h-2 rounded-full" />
               </CardHeader>
-
               <CardContent className="space-y-6">
                 <AnimatePresence mode="wait">
                   {currentStep === 1 && (
@@ -188,7 +252,6 @@ const Report = () => {
                           className="transition focus:ring-2 focus:ring-emerald-400"
                         />
                       </div>
-
                       <div className="space-y-2">
                         <Label htmlFor="category">Category</Label>
                         <Select
@@ -234,7 +297,6 @@ const Report = () => {
                           </SelectContent>
                         </Select>
                       </div>
-
                       <div className="space-y-2">
                         <Label htmlFor="urgency">Urgency Level</Label>
                         <Select
@@ -274,7 +336,6 @@ const Report = () => {
                           </SelectContent>
                         </Select>
                       </div>
-
                       <div className="space-y-2">
                         <Label htmlFor="description">
                           Detailed Description
@@ -320,14 +381,27 @@ const Report = () => {
                         </div>
                       </div>
 
-                      <div className="space-y-4 border-2 border-emerald-300 rounded-xl p-8 text-center bg-secondary/20 hover:bg-secondary/30 transition-colors cursor-pointer flex flex-col items-center">
+                      <div
+                        className="space-y-4 border-2 border-emerald-300 rounded-xl p-8 text-center bg-secondary/20 hover:bg-secondary/30 transition-colors cursor-pointer flex flex-col items-center"
+                        onClick={() =>
+                          document.getElementById("file-upload").click()
+                        }
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            document.getElementById("file-upload").click();
+                          }
+                        }}
+                      >
                         <Camera className="h-14 w-14 text-emerald-400 mb-4" />
                         <p className="text-muted-foreground mb-2 max-w-xs">
                           Drag & drop photos or click to upload
                         </p>
                         <label
                           htmlFor="file-upload"
-                          className="inline-flex cursor-pointer select-none items-center rounded-md bg-mint-500 px-4 py-2 text-sm font-medium shadow-sm text-white hover:shadow-md"
+                          className="inline-flex cursor-pointer select-none items-center rounded-md bg-mint-500 px-4 py-2 text-sm font-medium shadow-sm text-black hover:shadow-md"
                         >
                           <Upload className="h-4 w-4 mr-2" />
                           Choose Files
@@ -337,19 +411,40 @@ const Report = () => {
                           type="file"
                           multiple
                           accept="image/*"
-                          capture="environment" // forces camera, rear-facing if available
+                          capture="environment"
                           className="hidden"
-                          onChange={(e) => {
-                            // Handle selected files here if needed
-                            const files = e.target.files;
-                            // e.g. update state or validate files...
-                          }}
+                          onChange={handleFilesChange}
                         />
-
                         <p className="text-xs text-muted-foreground mt-2">
-                          Max 5 files, 10MB each
+                          Max {MAX_FILES} files, {MAX_FILE_SIZE_MB}MB each
                         </p>
                       </div>
+
+                      {/* Show selected files with remove option */}
+                      {files.length > 0 && (
+                        <div className="flex flex-wrap gap-3 justify-center">
+                          {files.map((file, index) => (
+                            <div
+                              key={index}
+                              className="relative w-24 h-24 border border-neutral-300 rounded-lg overflow-hidden"
+                            >
+                              <img
+                                src={URL.createObjectURL(file)}
+                                alt={`Preview ${index + 1}`}
+                                className="object-cover w-full h-full"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeFile(index)}
+                                className="absolute top-1 right-1 bg-red-600 rounded-full h-6 w-6 text-white flex items-center justify-center text-xs hover:bg-red-700"
+                                aria-label={`Remove file ${file.name}`}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </motion.div>
                   )}
 
@@ -367,7 +462,6 @@ const Report = () => {
                           <AlertTriangle className="h-5 w-5 mr-2 text-yellow-500" />
                           Review Your Report
                         </h3>
-
                         <div className="space-y-3 text-sm">
                           <div>
                             <span className="font-medium">Title:</span>{" "}
@@ -391,9 +485,14 @@ const Report = () => {
                               {formData.description || "Not provided"}
                             </p>
                           </div>
+                          <div>
+                            <span className="font-medium">
+                              Photos Uploaded:
+                            </span>{" "}
+                            {files.length > 0 ? files.length : "None"}
+                          </div>
                         </div>
                       </div>
-
                       <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-200">
                         <p className="text-sm text-muted-foreground">
                           ✅ By submitting, you confirm the information is
@@ -411,6 +510,7 @@ const Report = () => {
                       variant="mint"
                       onClick={handleBack}
                       className="flex-1 shadow-md hover:scale-105 transition"
+                      disabled={isSubmitting}
                     >
                       Back
                     </Button>
@@ -419,10 +519,13 @@ const Report = () => {
                     variant={currentStep === totalSteps ? "success" : "hero"}
                     onClick={handleNext}
                     className="flex-1 shadow-md hover:scale-105 transition"
+                    disabled={isSubmitting}
                   >
-                    {currentStep === totalSteps
-                      ? "🚀 Submit Report"
-                      : "Continue →"}
+                    {isSubmitting
+                      ? "Submitting..."
+                      : currentStep === totalSteps
+                      ? "Submit Report"
+                      : "Next"}
                   </Button>
                 </div>
               </CardContent>
