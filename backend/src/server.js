@@ -9,12 +9,15 @@ import reportRoutes from "./routes/reports.js";
 import userRoutes from "./routes/users.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import leaderboardRoutes from "./routes/leaderboard.js";
+import emailRoutes from "./routes/email.js";
 
 // Import middleware
 import errorHandler from "./middleware/errorHandler.js";
 
 // Load environment variables
-dotenv.config();
+dotenv.config({
+  path: "../.env",
+});
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -32,6 +35,7 @@ app.use("/api/reports", reportRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaderboard", leaderboardRoutes);
+app.use("/api/email", emailRoutes);
 
 // Basic route
 app.get("/", (req, res) => {
