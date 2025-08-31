@@ -6,6 +6,7 @@ import Home from "./pages/Home";
 import Leaderboard from "./pages/LeaderBoard.jsx";
 import Report from "./pages/Report";
 import Profile from "./pages/Profile.jsx";
+import Dashboard from "./pages/Dashboard.jsx";
 
 const router = createBrowserRouter([
   {
@@ -31,6 +32,10 @@ const router = createBrowserRouter([
   {
     path: "/profile",
     element: <Profile />,
+  },
+  {
+    path: "/dashboard",
+    element: <Dashboard />,
   },
 ]);
 

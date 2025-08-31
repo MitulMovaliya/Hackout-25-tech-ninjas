@@ -55,7 +55,6 @@ const Report = () => {
     isUrgent: false,
     tags: "",
   });
-<<<<<<< HEAD
 
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -64,16 +63,10 @@ const Report = () => {
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState("");
   const [submitError, setSubmitError] = useState("");
-=======
-  const [files, setFiles] = useState([]);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
 
   const totalSteps = 3;
   const progress = (currentStep / totalSteps) * 100;
 
-<<<<<<< HEAD
   // Check authentication on component mount
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -332,56 +325,23 @@ const Report = () => {
       if (!formData.title || !formData.incidentType || !formData.description) {
         alert("Please fill all required fields before continuing.");
         return;
-=======
-  const updateFormData = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  // Validate step fields before proceeding
-  const validateStep = () => {
-    if (currentStep === 1) {
-      if (
-        !formData.title.trim() ||
-        !formData.category ||
-        !formData.urgency ||
-        !formData.description.trim()
-      ) {
-        alert("Please fill all required fields before continuing.");
-        return false;
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
       }
-    }
-    if (currentStep === 2) {
-<<<<<<< HEAD
+      setCurrentStep(2);
+    } else if (currentStep === 2) {
       if (
         !formData.location.coordinates[0] ||
         !formData.location.coordinates[1]
       ) {
-=======
-      if (!formData.location.trim()) {
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
         alert("Please provide a location before continuing.");
-        return false;
+        return;
       }
-      if (files.length === 0) {
+      if (uploadedFiles.length === 0) {
         alert("Please upload at least one photo before continuing.");
-        return false;
+        return;
       }
-    }
-    return true;
-  };
-
-  const handleNext = () => {
-    if (!validateStep()) return;
-
-    if (currentStep < totalSteps) {
-      setCurrentStep(currentStep + 1);
-    } else {
-<<<<<<< HEAD
+      setCurrentStep(3);
+    } else if (currentStep === 3) {
       submitReport();
-=======
-      handleSubmit();
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
     }
   };
 
@@ -391,7 +351,6 @@ const Report = () => {
     }
   };
 
-<<<<<<< HEAD
   const updateFormData = (field, value) => {
     if (field.includes(".")) {
       const [parent, child] = field.split(".");
@@ -405,62 +364,6 @@ const Report = () => {
     } else {
       setFormData((prev) => ({ ...prev, [field]: value }));
     }
-=======
-  // Validate files on selection
-  const handleFilesChange = (e) => {
-    const selectedFiles = Array.from(e.target.files);
-    if (selectedFiles.length + files.length > MAX_FILES) {
-      alert(`You can upload up to ${MAX_FILES} files.`);
-      return;
-    }
-    for (const file of selectedFiles) {
-      if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
-        alert(`File ${file.name} exceeds ${MAX_FILE_SIZE_MB}MB size limit.`);
-        return;
-      }
-    }
-    setFiles((prev) => [...prev, ...selectedFiles]);
-  };
-
-  // Remove file from list
-  const removeFile = (index) => {
-    setFiles((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSubmit = async () => {
-  setIsSubmitting(true);
-  try {
-    await submitReport(formData, files);
-    setIsSubmitted(true);
-  } catch (error) {
-    alert("Error submitting report. Please try again.");
-    console.error(error);
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-
-  const submitReport = async (formData, files) => {
-    const data = new FormData();
-    for (const key in formData) {
-      data.append(key, formData[key]);
-    }
-    files.forEach((file, i) => {
-      data.append(`photos`, file);
-    });
-
-    const response = await fetch("/api/reports", {
-      method: "POST",
-      body: data,
-    });
-
-    if (!response.ok) {
-      throw new Error("Failed to submit report");
-    }
-
-    const result = await response.json();
-    return result;
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
   };
 
   if (isSubmitted) {
@@ -520,7 +423,6 @@ const Report = () => {
   }
 
   return (
-<<<<<<< HEAD
     <div className="min-h-screen relative bg-gradient-to-b from-green-50 via-emerald-50 to-blue-50">
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-10 left-10 text-green-200">
@@ -531,10 +433,6 @@ const Report = () => {
         </div>
       </div>
 
-=======
-    <div className="min-h-screen relative bg-gradient-to-b from-ocean-light/10 to-green-50">
-      <div className="absolute inset-0 bg-[url('/mangrove-bg.jpg')] bg-cover bg-center opacity-30 blur-md"></div>
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
       <div className="relative z-10">
         <Navbar />
         <main className="pt-20 pb-8">
@@ -548,12 +446,8 @@ const Report = () => {
                 conservation opportunities
               </p>
             </div>
-<<<<<<< HEAD
 
             <Card className="shadow-2xl backdrop-blur-sm bg-white/90 rounded-2xl border-0">
-=======
-            <Card className="shadow-md backdrop-blur-sm bg-white/60 rounded-2xl border border-neutral-200">
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
               <CardHeader>
                 <div className="flex justify-between items-center mb-4">
                   <CardTitle className="text-xl font-bold text-green-800">
@@ -859,7 +753,6 @@ const Report = () => {
                         </div>
                       </div>
 
-<<<<<<< HEAD
                       {/* Photo Upload Section */}
                       <div className="space-y-4">
                         <Label className="text-lg font-semibold text-gray-800 flex items-center">
@@ -896,33 +789,6 @@ const Report = () => {
                         </div>
 
                         {/* Hidden file inputs */}
-=======
-                      <div
-                        className="space-y-4 border-2 border-emerald-300 rounded-xl p-8 text-center bg-secondary/20 hover:bg-secondary/30 transition-colors cursor-pointer flex flex-col items-center"
-                        onClick={() =>
-                          document.getElementById("file-upload").click()
-                        }
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            document.getElementById("file-upload").click();
-                          }
-                        }}
-                      >
-                        <Camera className="h-14 w-14 text-emerald-400 mb-4" />
-                        <p className="text-muted-foreground mb-2 max-w-xs">
-                          Drag & drop photos or click to upload
-                        </p>
-                        <label
-                          htmlFor="file-upload"
-                          className="inline-flex cursor-pointer select-none items-center rounded-md bg-mint-500 px-4 py-2 text-sm font-medium shadow-sm text-black hover:shadow-md"
-                        >
-                          <Upload className="h-4 w-4 mr-2" />
-                          Choose Files
-                        </label>
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
                         <input
                           ref={fileInputRef}
                           type="file"
@@ -930,18 +796,11 @@ const Report = () => {
                           accept="image/*"
                           capture="environment"
                           className="hidden"
-<<<<<<< HEAD
                           onChange={handleFileUpload}
                         />
 
                         <p className="text-xs text-gray-500 text-center">
                           📸 Max 5 photos, 10MB each • JPEG, PNG supported
-=======
-                          onChange={handleFilesChange}
-                        />
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Max {MAX_FILES} files, {MAX_FILE_SIZE_MB}MB each
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
                         </p>
 
                         {/* Display uploaded files */}
@@ -979,28 +838,32 @@ const Report = () => {
                       </div>
 
                       {/* Show selected files with remove option */}
-                      {files.length > 0 && (
-                        <div className="flex flex-wrap gap-3 justify-center">
-                          {files.map((file, index) => (
-                            <div
-                              key={index}
-                              className="relative w-24 h-24 border border-neutral-300 rounded-lg overflow-hidden"
-                            >
-                              <img
-                                src={URL.createObjectURL(file)}
-                                alt={`Preview ${index + 1}`}
-                                className="object-cover w-full h-full"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeFile(index)}
-                                className="absolute top-1 right-1 bg-red-600 rounded-full h-6 w-6 text-white flex items-center justify-center text-xs hover:bg-red-700"
-                                aria-label={`Remove file ${file.name}`}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
+                      {uploadedFiles.length > 0 && (
+                        <div className="space-y-3">
+                          <Label className="text-sm font-medium text-gray-700">
+                            Uploaded Photos ({uploadedFiles.length}/5)
+                          </Label>
+                          <div className="grid grid-cols-2 gap-3">
+                            {uploadedFiles.map((fileObj) => (
+                              <div key={fileObj.id} className="relative group">
+                                <img
+                                  src={fileObj.preview}
+                                  alt={fileObj.name}
+                                  className="w-full h-24 object-cover rounded-lg border border-gray-200"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removeFile(fileObj.id)}
+                                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 rounded-b-lg truncate">
+                                  {fileObj.name}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </motion.div>
@@ -1020,7 +883,6 @@ const Report = () => {
                           <CheckCircle className="h-5 w-5 mr-2" />
                           Review Your Report
                         </h3>
-<<<<<<< HEAD
 
                         <div className="space-y-4 text-sm">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1095,12 +957,6 @@ const Report = () => {
                                 </div>
                               )}
                             </div>
-=======
-                        <div className="space-y-3 text-sm">
-                          <div>
-                            <span className="font-medium">Title:</span>{" "}
-                            {formData.title || "Not specified"}
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
                           </div>
 
                           <div className="pt-4 border-t border-green-200">
@@ -1112,7 +968,6 @@ const Report = () => {
                                 "No description provided"}
                             </p>
                           </div>
-<<<<<<< HEAD
 
                           {uploadedFiles.length > 0 && (
                             <div className="pt-4 border-t border-green-200">
@@ -1152,22 +1007,6 @@ const Report = () => {
                             </ul>
                           </div>
                         </div>
-=======
-                          <div>
-                            <span className="font-medium">
-                              Photos Uploaded:
-                            </span>{" "}
-                            {files.length > 0 ? files.length : "None"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-4 border border-emerald-200">
-                        <p className="text-sm text-muted-foreground">
-                          ✅ By submitting, you confirm the information is
-                          accurate and agree to our environmental community
-                          guidelines.
-                        </p>
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
                       </div>
                     </motion.div>
                   )}
@@ -1179,11 +1018,7 @@ const Report = () => {
                       type="button"
                       variant="outline"
                       onClick={handleBack}
-<<<<<<< HEAD
                       className="flex-1 border-gray-300 hover:bg-gray-50"
-=======
-                      className="flex-1 shadow-md hover:scale-105 transition"
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
                       disabled={isSubmitting}
                     >
                       ← Back
@@ -1192,7 +1027,6 @@ const Report = () => {
                   <Button
                     type="button"
                     onClick={handleNext}
-<<<<<<< HEAD
                     disabled={isSubmitting}
                     className={`flex-1 ${
                       currentStep === totalSteps
@@ -1213,16 +1047,6 @@ const Report = () => {
                     ) : (
                       "Continue →"
                     )}
-=======
-                    className="flex-1 shadow-md hover:scale-105 transition"
-                    disabled={isSubmitting}
-                  >
-                    {isSubmitting
-                      ? "Submitting..."
-                      : currentStep === totalSteps
-                      ? "Submit Report"
-                      : "Next"}
->>>>>>> 9ee72a962a42601f6404e4d87cbef2b3362ac6e4
                   </Button>
                 </div>
               </CardContent>
