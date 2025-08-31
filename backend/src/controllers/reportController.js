@@ -1,11 +1,11 @@
 import Report from "../models/Report.js";
 import User from "../models/User.js";
 // import logger from "../utils/logger.js";
-import aiService from "../services/aiService.js";
-import satelliteService from "../services/satelliteService.js";
-import pythonService from "../services/pythonService.js";
 import emailService from "../services/emailService.js";
 import path from "path";
+import axios from "axios";
+import sharp from "sharp";
+import { promises as fs } from "fs";
 
 // @desc    Create new report
 // @route   POST /api/reports
@@ -821,141 +821,7 @@ const processWithAI = async (req, res) => {
 };
 
 // Helper function to process report with AI
-const processReportWithAI = async (reportId) => {
-  try {
-    const report = await Report.findById(reportId);
-
-    if (!report) {
-      throw new Error("Report not found");
-    }
-
-    await report.updateStatus("ai_processing");
-
-    const aiAnalysis = {};
-
-    // Ensure media and coordinates exist
-    report.media = report.media || { images: [] };
-    report.location = report.location || { coordinates: [0, 0] };
-
-    // Image classification (guard against empty images)
-    if (Array.isArray(report.media.images) && report.media.images.length > 0) {
-      try {
-        // Prefer calling the Python FastAPI service if available
-        const imagePaths = report.media.images.map((img) => img.path);
-        let imageClassification = null;
-
-        try {
-          if (await pythonService.checkAIServiceHealth()) {
-            const resp = await pythonService.callAIService("/classify", {
-              image_paths: imagePaths,
-            });
-            // Normalize response to existing aiAnalysis format
-            imageClassification = {
-              predictions: resp.predictions.map((p) => ({
-                class: p.class_name || p.class || p.className,
-                confidence: p.confidence,
-                model: p.model || p.modelName || "python-heuristic",
-                timestamp: p.timestamp || new Date(),
-                details: p.details || {},
-              })),
-              averageConfidence: resp.averageConfidence,
-              primaryClass: resp.primaryClass,
-              isValid: !!resp.isValid,
-              totalImages: resp.totalImages,
-              validImages: resp.validImages,
-            };
-          } else {
-            // Fallback to existing JS aiService
-            imageClassification = await aiService.classifyImages(imagePaths);
-          }
-        } catch (svcErr) {
-          console.error(
-            "Python service classify failed, falling back:",
-            svcErr
-          );
-          imageClassification = await aiService.classifyImages(imagePaths);
-        }
-
-        aiAnalysis.imageClassification = imageClassification;
-      } catch (imgErr) {
-        console.error("Image classification failed:", imgErr);
-        aiAnalysis.imageClassification = { error: String(imgErr) };
-      }
-    }
-
-    // Satellite validation
-    try {
-      const satelliteValidation = await satelliteService.analyzeSatelliteData(
-        report.location.coordinates[0],
-        report.location.coordinates[1]
-      );
-      aiAnalysis.satelliteValidation = satelliteValidation;
-    } catch (satErr) {
-      console.error("Satellite analysis failed:", satErr);
-      aiAnalysis.satelliteValidation = { error: String(satErr) };
-    }
-
-    // Anomaly detection
-    try {
-      // Prefer Python service for anomaly detection if available (note: current Python anomaly is lightweight)
-      let anomalyDetection = null;
-      try {
-        if (await pythonService.checkAIServiceHealth()) {
-          const resp = await pythonService.callAIService("/anomaly", {
-            reporter_id: report.reporter.toString(),
-            coordinates: report.location.coordinates,
-          });
-          anomalyDetection = resp;
-        } else {
-          anomalyDetection = await aiService.detectAnomalies(
-            report.reporter,
-            report.location.coordinates
-          );
-        }
-      } catch (anomSvcErr) {
-        console.error(
-          "Python service anomaly failed, falling back:",
-          anomSvcErr
-        );
-        anomalyDetection = await aiService.detectAnomalies(
-          report.reporter,
-          report.location.coordinates
-        );
-      }
-
-      aiAnalysis.anomalyDetection = anomalyDetection;
-    } catch (anomErr) {
-      console.error("Anomaly detection failed:", anomErr);
-      aiAnalysis.anomalyDetection = { error: String(anomErr) };
-    }
-
-    // Add AI analysis to report and re-fetch saved report to read computed overallScore
-    await report.addAIAnalysis(aiAnalysis);
-    const updatedReport = await Report.findById(reportId).lean();
-
-    const overallScore =
-      updatedReport?.aiAnalysis?.overallScore !== undefined
-        ? updatedReport.aiAnalysis.overallScore
-        : 0;
-
-    // Update status based on persisted AI confidence
-    if (overallScore > 0.7) {
-      await report.updateStatus("ai_validated");
-    } else {
-      await report.updateStatus("human_review");
-    }
-
-    console.log(`AI processing completed for report: ${reportId}`);
-  } catch (error) {
-    console.error(`AI processing failed for report ${reportId}:`, error);
-
-    // Update report status to indicate AI processing failed
-    const report = await Report.findById(reportId);
-    if (report) {
-      await report.updateStatus("human_review");
-    }
-  }
-};
+const processReportWithAI = async (reportId) => {};
 
 export default {
   createReport,

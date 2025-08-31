@@ -80,6 +80,19 @@ const Navbar = () => {
             <span>Profile</span>
           </Link>
 
+          {isLoggedIn &&
+            (user?.role === "admin" ||
+              user?.role === "authority" ||
+              user?.role === "ngo") && (
+              <Link
+                to="/dashboard"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium bg-green-100 text-green-700 hover:bg-green-500 hover:text-white transition-all duration-300"
+              >
+                <i className="fa-solid fa-gauge-high"></i>
+                <span>Dashboard</span>
+              </Link>
+            )}
+
           {isLoggedIn ? (
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 px-2">
@@ -153,6 +166,20 @@ const Navbar = () => {
               <i className="fa-solid fa-user w-5"></i>
               <span>Profile</span>
             </Link>
+
+            {isLoggedIn &&
+              (user?.role === "admin" ||
+                user?.role === "authority" ||
+                user?.role === "ngo") && (
+                <Link
+                  to="/dashboard"
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-green-700 hover:bg-green-50 transition-colors"
+                  onClick={() => setIsMenuOpen(false)}
+                >
+                  <i className="fa-solid fa-gauge-high w-5"></i>
+                  <span>Dashboard</span>
+                </Link>
+              )}
 
             {isLoggedIn ? (
               <div className="px-4 py-3 space-y-2">
